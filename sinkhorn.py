@@ -59,9 +59,15 @@ class OptimalTransport:
         u = np.random.random(self.n)  # (n,), to be optimized
         v = np.random.random(self.m)  # (m,), to be optimized
 
-        for _ in range(10):
+        thr = 0.1
+        (u_, v_) = (np.full(1, 1024.0), np.full(1, 1024.0))
+        for cnt in range(1000):
             u = self.a / np.matmul(K, v)  # (n,), a / (K x v)
             v = self.b / np.matmul(K.T, u)  # (m,), b / (K^T x u)
+            if np.sum(np.abs((u_ - u) / u) + np.abs((v_ - v) / v)) < thr:
+                print(f'converged at {cnt + 1} iter')
+                break
+            (u_, v_) = (u, v)
 
         P = np.matmul(np.matmul(np.diag(u), K), np.diag(v))  # (n, m), diag(u) x K x diag(v)
         return P
