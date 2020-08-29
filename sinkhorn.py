@@ -9,11 +9,6 @@ from scipy.spatial.distance import cdist
 import ot
 
 
-def calc_(a, b, cost: np.ndarray, gamma: float):
-    P = ot.sinkhorn(a, b, cost, gamma)
-    return P
-
-
 def calc(a, b, cost: np.ndarray, gamma: float):
     # The Sinkhorn's algorithm
 
@@ -21,7 +16,7 @@ def calc(a, b, cost: np.ndarray, gamma: float):
     u = np.random.random(cost.shape[0])  # (n,), to be optimized
     v = np.random.random(cost.shape[1])  # (m,), to be optimized
 
-    for _ in range(10):
+    for _ in range(20):
         u = a / np.matmul(K, v)  # (n,), a / (K x v)
         v = b / np.matmul(K.T, u)  # (m,), b / (K^T x u)
 
@@ -29,9 +24,13 @@ def calc(a, b, cost: np.ndarray, gamma: float):
     return P
 
 
+def calc_(a, b, cost: np.ndarray, gamma: float):
+    return ot.sinkhorn(a, b, cost, gamma)
+
+
 artist = None
-idx1 = None
-idx2 = None
+idx = None
+lines = []
 
 
 def show(x, y, P, W):
@@ -47,16 +46,11 @@ def show(x, y, P, W):
     ax.xaxis.set_pickradius(10)
     ax.yaxis.set_pickradius(10)
 
-    mx = P.max()
-    thr = 1e-8
-    for i in range(x.shape[0]):
-        for j in range(y.shape[0]):
-            alpha = P[i, j] / mx
-            if alpha > thr:
-                ax.plot([x[i, 0], y[j, 0]], [x[i, 1], y[j, 1]], alpha=alpha, c=[0.5, 0.5, 1])
+    global lines
+    lines = draw_lines(x, y, P, ax)
 
     def motion(event):
-        global artist, idx1, idx2
+        global artist, idx
         if artist is None:
             return
         assert isinstance(artist, Line2D)
@@ -65,41 +59,35 @@ def show(x, y, P, W):
             artist = None
             return
 
-        idx = idx1 if idx1 is not None else idx2
-
         xdata = artist.get_xdata()
         ydata = artist.get_ydata()
-        print(xdata.shape)
         xdata[idx] = event.xdata
         ydata[idx] = event.ydata
-        print(f'({event.xdata:.2}, {event.ydata:.2})')
-        print(f'sum: {np.sum(xdata)}')
-        # artist.set_data(xdata, ydata)
+        print(f'({event.xdata:.3}, {event.ydata:.3})')
+        artist.set_data(xdata, ydata)
         fig.canvas.draw()
 
     def onpick(event):
-        print('picked')
-        global artist, idx1, idx2
+        global artist, idx
         if event.artist is line1:
             artist = event.artist
-            idx1 = event.ind
-            print(idx1)
+            idx = event.ind
+            print(f'picked: {idx}')
         if event.artist is line2:
             artist = event.artist
-            idx2 = event.ind
-            print(idx2)
-        # xdata = artist.get_xdata()
-        # ydata = artist.get_ydata()
-        # print(xdata.shape)
-        # ind = event.ind
-        # print(f'onpick points: ({xdata[ind]}, {ydata[ind]})')
-        # fig.canvas.draw()
+            idx = event.ind
+            print(f'picked: {idx}')
 
-    def release(event):
-        global artist, idx1, idx2
+    def release(_):
+        global artist, idx, lines
+        print(f'released: {idx}')
         artist = None
-        idx1 = None
-        idx2 = None
+        idx = None
+
+        for line in lines:
+            line.remove()
+        lines = draw_lines(x, y, P, ax)
+        fig.canvas.draw()
 
     fig.canvas.mpl_connect('motion_notify_event', motion)
     fig.canvas.mpl_connect('pick_event', onpick)
@@ -108,11 +96,25 @@ def show(x, y, P, W):
     plt.show()
 
 
+def draw_lines(x, y, P, ax):
+    mx = P.max()
+    thr = 1e-3
+    lines_ = []
+    for i in range(x.shape[0]):
+        for j in range(y.shape[0]):
+            alpha = P[i, j] / mx
+            if alpha < thr:
+                continue
+            line, = ax.plot([x[i, 0], y[j, 0]], [x[i, 1], y[j, 1]], alpha=alpha, c=[0.5, 0.5, 1])
+            lines_.append(line)
+    return lines_
+
+
 def main():
     # Empirical measures
     n = 5  # number of source points
-    m = 10  # number of target points
-    gamma = 0.1  # coefficient of the regularization term
+    m = 5  # number of target points
+    gamma = 0.01  # coefficient of the regularization term
     # \mu = \sum a_i * \delta_{x_i}
     mu_x = np.array([0., 0.])
     cov_x = np.array([[1., 0.], [0., 1.]])
