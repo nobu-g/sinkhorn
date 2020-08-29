@@ -96,11 +96,11 @@ class OptimalTransport:
 
         axcolor = 'lightgoldenrodyellow'
         ax_slider = plt.axes([0.25, 0.1, 0.65, 0.03], facecolor=axcolor)
-        slider = Slider(ax_slider, 'Gamma', 0.01, 0.5, valinit=0.1, valstep=0.01)
+        slider = Slider(ax_slider, 'log10 (gamma)', valmin=-2, valmax=2, valinit=np.log10(self.gamma), valstep=0.1)
 
         def update(_):
             global lines
-            self.gamma = slider.val
+            self.gamma = float(np.power(10.0, slider.val))
             for line in lines:
                 line.remove()
             lines = draw_lines(self.src, self.tgt, self.calc(), ax)
