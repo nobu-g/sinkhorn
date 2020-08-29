@@ -11,107 +11,9 @@ from scipy.spatial.distance import cdist
 # Calculate P & W using POT (https://pythonot.github.io/)
 import ot
 
-
-def calc(a, b, cost: np.ndarray, gamma: float):
-    # The Sinkhorn's algorithm
-
-    K = np.exp(-cost / gamma)  # (n, m), given by the problem
-    u = np.random.random(cost.shape[0])  # (n,), to be optimized
-    v = np.random.random(cost.shape[1])  # (m,), to be optimized
-
-    for _ in range(10):
-        u = a / np.matmul(K, v)  # (n,), a / (K x v)
-        v = b / np.matmul(K.T, u)  # (m,), b / (K^T x u)
-
-    P = np.matmul(np.matmul(np.diag(u), K), np.diag(v))  # (n, m), diag(u) x K x diag(v)
-    return P
-
-
-def calc_(a, b, cost: np.ndarray, gamma: float):
-    return ot.sinkhorn(a, b, cost, gamma)
-
-
 artist = None
 idx = None
 lines = []
-
-
-def show(x, y, P, W):
-    print(f'Wasserstein distance: {W:.2f}')
-
-    fig: Figure = plt.figure()
-    ax: Axes = fig.add_subplot(1, 1, 1)
-    plt.subplots_adjust(bottom=0.25)
-    ax.set_title('OT matrix with samples')
-    line1, = ax.plot(x[:, 0], x[:, 1], 'o', label='Source samples', picker=True)
-    line2, = ax.plot(y[:, 0], y[:, 1], 'o', label='Target samples', picker=True)
-    ax.legend(loc=0)
-
-    ax.xaxis.set_pickradius(10)
-    ax.yaxis.set_pickradius(10)
-
-    global lines
-    lines = draw_lines(x, y, P, ax)
-
-    axcolor = 'lightgoldenrodyellow'
-    ax_slider = plt.axes([0.25, 0.1, 0.65, 0.03], facecolor=axcolor)
-    slider = Slider(ax_slider, 'Gamma', 0.01, 0.5, valinit=0.1, valstep=0.01)
-
-    def update(val):
-        global lines
-        g = slider.val
-        for line in lines:
-            line.remove()
-        lines = draw_lines(x, y, P, ax)
-        fig.canvas.draw()
-
-    slider.on_changed(update)
-
-    def motion(event):
-        global artist, idx
-        if artist is None:
-            return
-        assert isinstance(artist, Line2D)
-
-        if event.xdata is None or event.ydata is None:
-            artist = None
-            return
-
-        xdata = artist.get_xdata()
-        ydata = artist.get_ydata()
-        xdata[idx] = event.xdata
-        ydata[idx] = event.ydata
-        print(f'({event.xdata:.3}, {event.ydata:.3})')
-        artist.set_data(xdata, ydata)
-        fig.canvas.draw()
-
-    def onpick(event):
-        global artist, idx
-        if event.artist is line1:
-            artist = event.artist
-            idx = event.ind
-            print(f'picked: {idx}')
-        if event.artist is line2:
-            artist = event.artist
-            idx = event.ind
-            print(f'picked: {idx}')
-
-    def release(_):
-        global artist, idx, lines
-        print(f'released: {idx}')
-        artist = None
-        idx = None
-
-        for line in lines:
-            line.remove()
-        lines = draw_lines(x, y, P, ax)
-        fig.canvas.draw()
-
-    fig.canvas.mpl_connect('motion_notify_event', motion)
-    fig.canvas.mpl_connect('pick_event', onpick)
-    fig.canvas.mpl_connect('button_release_event', release)
-
-    plt.show()
 
 
 def draw_lines(x, y, P, ax):
@@ -128,6 +30,137 @@ def draw_lines(x, y, P, ax):
     return lines_
 
 
+class OptimalTransport:
+    def __init__(self, n: int, m: int):
+        self.n = n
+        self.m = m
+        self.gamma = 0.1
+        self.d = 2
+
+        # \mu = \sum a_i * \delta_{x_i}
+        mu_src = np.array([0., 0.])
+        cov_src = np.array([[1., 0.], [0., 1.]])
+        self.src = np.stack([np.random.multivariate_normal(mu_src, cov_src) for _ in range(n)])  # (n, d)
+        self.a = np.ones(n) / n  # (n,). same mass at each position
+
+        # \nu = \sum b_j * \delta_{y_j}
+        mu_tgt = np.array([4., 4.])
+        cov_tgt = np.array([[1., 0.], [0., 1.]])
+        self.tgt = np.stack([np.random.multivariate_normal(mu_tgt, cov_tgt) for _ in range(m)])  # (m, d)
+        self.b = np.ones(m) / m  # (m,). same mass at each position
+
+        self.costs = self.calc_costs()
+
+    def calc(self):
+        """The Sinkhorn's algorithm"""
+
+        cost = self.calc_costs()
+        K = np.exp(-cost / self.gamma)  # (n, m), given by the problem
+        u = np.random.random(self.n)  # (n,), to be optimized
+        v = np.random.random(self.m)  # (m,), to be optimized
+
+        for _ in range(10):
+            u = self.a / np.matmul(K, v)  # (n,), a / (K x v)
+            v = self.b / np.matmul(K.T, u)  # (m,), b / (K^T x u)
+
+        P = np.matmul(np.matmul(np.diag(u), K), np.diag(v))  # (n, m), diag(u) x K x diag(v)
+        return P
+
+    def calc_(self):
+        cost = self.calc_costs()
+        return ot.sinkhorn(self.a, self.b, cost, self.gamma)
+
+    def calc_costs(self):
+        """Transportation costs"""
+        return cdist(self.src, self.tgt, metric='euclidean')  # (n, m)
+
+    def wasserstein(self):
+        return np.sum(self.calc() * self.costs)
+
+    def show(self):
+        # print(f'Wasserstein distance: {W:.2f}')
+
+        fig: Figure = plt.figure()
+        ax: Axes = fig.add_subplot(1, 1, 1)
+        plt.subplots_adjust(bottom=0.25)
+        ax.set_title('OT matrix with samples')
+        line_src, = ax.plot(self.src[:, 0], self.src[:, 1], 'o', label='Source samples', picker=True)
+        line_tgt, = ax.plot(self.tgt[:, 0], self.tgt[:, 1], 'o', label='Target samples', picker=True)
+        ax.legend(loc=0)
+
+        ax.xaxis.set_pickradius(10)
+        ax.yaxis.set_pickradius(10)
+
+        global lines
+        lines = draw_lines(self.src, self.tgt, self.calc(), ax)
+
+        axcolor = 'lightgoldenrodyellow'
+        ax_slider = plt.axes([0.25, 0.1, 0.65, 0.03], facecolor=axcolor)
+        slider = Slider(ax_slider, 'Gamma', 0.01, 0.5, valinit=0.1, valstep=0.01)
+
+        def update(_):
+            global lines
+            self.gamma = slider.val
+            for line in lines:
+                line.remove()
+            lines = draw_lines(self.src, self.tgt, self.calc(), ax)
+            fig.canvas.draw()
+
+        slider.on_changed(update)
+
+        def motion(event):
+            global artist, idx
+            if artist is None:
+                return
+            assert isinstance(artist, Line2D)
+
+            if event.xdata is None or event.ydata is None:
+                release(None)
+                return
+
+            print(f'({event.xdata:.3}, {event.ydata:.3})')
+
+            xdata = artist.get_xdata()  # (n or m,)
+            ydata = artist.get_ydata()  # (n or m,)
+            xdata[idx] = event.xdata
+            ydata[idx] = event.ydata
+            if artist is line_src:
+                self.src = np.stack([xdata, ydata], axis=1)
+            if artist is line_tgt:
+                self.tgt = np.stack([xdata, ydata], axis=1)
+
+            artist.set_data(xdata, ydata)
+            fig.canvas.draw()
+
+        def onpick(event):
+            global artist, idx
+            if event.artist is line_src:
+                artist = event.artist
+                idx = event.ind
+                print(f'picked: {idx}')
+            if event.artist is line_tgt:
+                artist = event.artist
+                idx = event.ind
+                print(f'picked: {idx}')
+
+        def release(_):
+            global artist, idx, lines
+            print(f'released: {idx}')
+            artist = None
+            idx = None
+
+            for line in lines:
+                line.remove()
+            lines = draw_lines(self.src, self.tgt, self.calc(), ax)
+            fig.canvas.draw()
+
+        fig.canvas.mpl_connect('motion_notify_event', motion)
+        fig.canvas.mpl_connect('pick_event', onpick)
+        fig.canvas.mpl_connect('button_release_event', release)
+
+        plt.show()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', '--src', '-s', type=int, default=5,
@@ -136,28 +169,9 @@ def main():
                         help='number of target points')
     args = parser.parse_args()
 
-    n = args.source  # number of source points
-    m = args.target  # number of target points
-    gamma = 0.01  # coefficient of the regularization term
-    # \mu = \sum a_i * \delta_{x_i}
-    mu_x = np.array([0., 0.])
-    cov_x = np.array([[1., 0.], [0., 1.]])
-    x = np.stack([np.random.multivariate_normal(mu_x, cov_x) for _ in range(n)])  # (n, d)
-    a = np.ones(n) / n  # (n,). same mass at each position
+    opt = OptimalTransport(args.source, args.target)
 
-    # \nu = \sum b_j * \delta_{y_j}
-    mu_y = np.array([4., 4.])
-    cov_y = np.array([[1., 0.], [0., 1.]])
-    y = np.stack([np.random.multivariate_normal(mu_y, cov_y) for _ in range(m)])  # (m, d)
-    b = np.ones(m) / m  # (m,). same mass at each position
-
-    # Transportation costs
-    dist: np.ndarray = cdist(x, y, metric='euclidean')  # (n, m)
-
-    P = calc(a, b, cost=dist, gamma=gamma)
-    W = np.sum(P * dist)
-
-    show(x, y, P, W)
+    opt.show()
 
 
 if __name__ == '__main__':
