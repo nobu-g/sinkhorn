@@ -1,8 +1,11 @@
+import argparse
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from matplotlib.widgets import Slider
 from scipy.spatial.distance import cdist
 
 # Calculate P & W using POT (https://pythonot.github.io/)
@@ -16,7 +19,7 @@ def calc(a, b, cost: np.ndarray, gamma: float):
     u = np.random.random(cost.shape[0])  # (n,), to be optimized
     v = np.random.random(cost.shape[1])  # (m,), to be optimized
 
-    for _ in range(20):
+    for _ in range(10):
         u = a / np.matmul(K, v)  # (n,), a / (K x v)
         v = b / np.matmul(K.T, u)  # (m,), b / (K^T x u)
 
@@ -38,6 +41,7 @@ def show(x, y, P, W):
 
     fig: Figure = plt.figure()
     ax: Axes = fig.add_subplot(1, 1, 1)
+    plt.subplots_adjust(bottom=0.25)
     ax.set_title('OT matrix with samples')
     line1, = ax.plot(x[:, 0], x[:, 1], 'o', label='Source samples', picker=True)
     line2, = ax.plot(y[:, 0], y[:, 1], 'o', label='Target samples', picker=True)
@@ -48,6 +52,20 @@ def show(x, y, P, W):
 
     global lines
     lines = draw_lines(x, y, P, ax)
+
+    axcolor = 'lightgoldenrodyellow'
+    ax_slider = plt.axes([0.25, 0.1, 0.65, 0.03], facecolor=axcolor)
+    slider = Slider(ax_slider, 'Gamma', 0.01, 0.5, valinit=0.1, valstep=0.01)
+
+    def update(val):
+        global lines
+        g = slider.val
+        for line in lines:
+            line.remove()
+        lines = draw_lines(x, y, P, ax)
+        fig.canvas.draw()
+
+    slider.on_changed(update)
 
     def motion(event):
         global artist, idx
@@ -111,9 +129,15 @@ def draw_lines(x, y, P, ax):
 
 
 def main():
-    # Empirical measures
-    n = 5  # number of source points
-    m = 5  # number of target points
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--source', '--src', '-s', type=int, default=5,
+                        help='number of source points')
+    parser.add_argument('--target', '--tgt', '-t', type=int, default=5,
+                        help='number of target points')
+    args = parser.parse_args()
+
+    n = args.source  # number of source points
+    m = args.target  # number of target points
     gamma = 0.01  # coefficient of the regularization term
     # \mu = \sum a_i * \delta_{x_i}
     mu_x = np.array([0., 0.])
