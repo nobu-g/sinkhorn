@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "sinkhorn"
+version = "0.1.0"
+description = ""
+authors = ["nobu-g <ueda-n127@hotmail.co.jp>"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+numpy = "^1.19.1"
+matplotlib = "^3.3.1"
+cython = "^0.29.21"
+POT = "^0.7.0"
+
+[tool.poetry.dev-dependencies]
+jupyter = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0a5"]
+build-backend = "poetry.core.masonry.api"
