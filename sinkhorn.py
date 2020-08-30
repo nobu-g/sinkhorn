@@ -64,7 +64,7 @@ class OptimalTransport:
         for cnt in range(1000):
             u = self.a / np.matmul(K, v)  # (n,), a / (K x v)
             v = self.b / np.matmul(K.T, u)  # (m,), b / (K^T x u)
-            if np.sum(np.abs((u_ - u) / u) + np.abs((v_ - v) / v)) < thr:
+            if np.sum(np.abs((u_ - u) / u)) + np.sum(np.abs((v_ - v) / v)) < thr:
                 print(f'converged at {cnt + 1} iter')
                 break
             (u_, v_) = (u, v)
